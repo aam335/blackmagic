@@ -155,5 +155,17 @@ static inline void DEBUG_WIRE(const char *format, ...)
 #undef MAX
 #define MAX(x, y)  (((x) > (y)) ? (x) : (y))
 
+#ifdef _WIN32
+#  ifdef _WIN64
+#    define PRI_SIZET PRIu64
+#  else
+#    define PRI_SIZET PRIu32
+#  endif
+#else
+#  define PRI_SIZET "zu"
+#endif
+#define BOOTMAGIC0 0xb007da7a
+#define BOOTMAGIC1 0xbaadfeed
+
 #endif
 
