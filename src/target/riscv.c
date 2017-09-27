@@ -357,8 +357,9 @@ static enum target_halt_reason riscv_halt_poll(target *t, target_addr *watch)
 		return TARGET_HALT_RUNNING;
 
 	uint32_t dcsr = riscv_csreg_read(dtm, RISCV_DCSR);
-	DEBUG_INFO("cause = %d\n", (dcsr >> 6) & 7);
-	switch ((dcsr >> 6) & 7) {
+	uint8_t cause = (dcsr >> 6) & 7;
+	DEBUG_INFO("cause = %d\n", cause);
+	switch (cause) {
 	case 0: return TARGET_HALT_RUNNING;
 	case 1: /* Software breakpoint */
 	case 2: /* Hardware trigger breakpoint */
@@ -400,22 +401,13 @@ void riscv_jtag_handler(jtag_dev_t *dev)
 
 	uint32_t dminfo = riscv_dtm_read(dtm, RISCV_DMINFO);
 	uint8_t dmversion = ((dminfo >> 4) & 0xc) | (dminfo & 3);
-#if defined(ENABLE_DEBUG) && defined(PLATFORM_HAS_DEBUG)
-	uint64_t dmcontrol = riscv_dtm_read(dtm, RISCV_DMCONTROL);
-	DEBUG_INFO("dmcontrol = %"PRIx64"\n", dmcontrol);
 	DEBUG_INFO("dminfo = %"PRIx32"\n", dminfo);
 	DEBUG_INFO("\tloversion = %d\n", dmversion);
-#endif
 	if (dmversion != 1)
 		return;
 
 	uint8_t authenticated = (dminfo >> 5) & 1;
-#if defined(ENABLE_DEBUG) && defined(PLATFORM_HAS_DEBUG)
-	uint8_t authtype = (dminfo >> 2) & 3;
-	uint8_t authbusy = (dminfo >> 4) & 1;
-	DEBUG_INFO("\tauthtype = %d, authbusy = %d, authenticated = %d\n",
-	      authtype, authbusy, authenticated);
-#endif
+	DEBUG_INFO("\tauthenticated = %d\n", authenticated);
 	if (authenticated != 1)
 		return;
 
