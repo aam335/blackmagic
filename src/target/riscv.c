@@ -219,7 +219,7 @@ static void riscv_gpreg_write(struct riscv_dtm *dtm, uint8_t reg, uint32_t val)
 
 static void riscv_halt_request(target *t)
 {
-	DEBUG("Halt requested!\n");
+	DEBUG_INFO("Halt requested!\n");
 	struct riscv_dtm *dtm = t->priv;
 	/* Debug RAM stub
 	 * 400:   7b046073   csrsi dcsr, halt
@@ -232,7 +232,7 @@ static void riscv_halt_request(target *t)
 
 static void riscv_halt_resume(target *t, bool step)
 {
-	DEBUG("Resume requested! step=%d\n", step);
+	DEBUG_INFO("Resume requested! step=%d\n", step);
 	struct riscv_dtm *dtm = t->priv;
 	/* Debug RAM stub - we patch in step bit as needed
 	 * 400:   7b006073   csrsi dcsr, 0
@@ -274,8 +274,8 @@ static void riscv_mem_write(target *t, target_addr dest, const void *src, size_t
 
 static void riscv_reset(target *t)
 {
-	(void)t;
-	DEBUG_WARN("RISC-V reset not implemented!\n");
+	DEBUG_INFO("Resetting!\n");
+	riscv_csreg_write(t->priv, RISCV_DCSR, 1 << 29);
 }
 
 bool riscv_check_error(target *t)
@@ -352,13 +352,12 @@ static enum target_halt_reason riscv_halt_poll(target *t, target_addr *watch)
 	(void)watch;
 	struct riscv_dtm *dtm = t->priv;
 	uint64_t dmcontrol = riscv_dtm_read(dtm, RISCV_DMCONTROL);
-	DEBUG("dmcontrol = 0x%"PRIx64"\n", dmcontrol);
+	DEBUG_INFO("dmcontrol = 0x%"PRIx64"\n", dmcontrol);
 	if (!dtm->halt_requested && (dmcontrol & RISCV_DMCONTROL_HALTNOT) == 0)
 		return TARGET_HALT_RUNNING;
 
 	uint32_t dcsr = riscv_csreg_read(dtm, RISCV_DCSR);
-	uint8_t cause = (dcsr >> 6) & 7;
-	DEBUG("cause = %d\n", cause);
+	DEBUG_INFO("cause = %d\n", (dcsr >> 6) & 7);
 	switch ((dcsr >> 6) & 7) {
 	case 0: return TARGET_HALT_RUNNING;
 	case 1: /* Software breakpoint */
