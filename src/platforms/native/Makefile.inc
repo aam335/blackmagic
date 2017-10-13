@@ -7,7 +7,7 @@ CFLAGS += -Istm32/include -mcpu=cortex-m3 -mthumb \
 	-Iplatforms/stm32
 
 LDFLAGS_BOOT := $(LDFLAGS) --specs=nano.specs -lopencm3_stm32f1 \
-	-Wl,-T,platforms/stm32/blackmagic.ld -nostartfiles -lc \
+	-Wl,-T,../../libopencm3/lib/stm32/f1/stm32f103xb.ld -nostartfiles -lc \
 	-Wl,-Map=mapfile -mthumb -mcpu=cortex-m3 -Wl,-gc-sections \
 	-L../libopencm3/lib
 LDFLAGS = $(LDFLAGS_BOOT) -Wl,-Ttext=0x8002000

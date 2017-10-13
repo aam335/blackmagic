@@ -36,8 +36,8 @@
 #endif
 
 #define PLATFORM_HAS_TRACESWO
-#define BOARD_IDENT "Black Magic Probe (F3_IF), (Firmware " FIRMWARE_VERSION ")"
-#define DFU_IDENT   "Black Magic Firmware Upgrade (F3_IF)"
+#define BOARD_IDENT "Black Magic Probe (F072_IF), (Firmware " FIRMWARE_VERSION ")"
+#define DFU_IDENT   "Black Magic Firmware Upgrade (F072_IF)"
 
 /* Important pin mappings for STM32 implementation:
  *
@@ -49,7 +49,7 @@
  * SRST_OUT =   PC8
  * TDI = 	PA0
  * TMS = 	PA1 (input for SWDP)
- * TCK = 	PA7/SWCLK
+ * TCK = 	PA6/SWCLK
  * TDO = 	PA6 (input for TRACESWO
  * nSRST =	PA5
  *
@@ -83,53 +83,52 @@
 /* PORTB does not stay active in system bootloader!*/
 #define LED_BOOTLOADER	GPIO6
 
-#define BOOTMAGIC0 0xb007da7a
-#define BOOTMAGIC1 0xbaadfeed
-
-# define SWD_MODER   GPIO_MODER(SWDIO_PORT)
-# define SWD_MODE_MASK (1 << (1 << 1))
 #define TMS_SET_MODE() \
 	gpio_mode_setup(TMS_PORT, GPIO_MODE_OUTPUT, \
 	                GPIO_PUPD_NONE, TMS_PIN);
-#define SWDIO_MODE_FLOAT() SWD_MODER &= ~SWD_MODE_MASK
-#define SWDIO_MODE_DRIVE() SWD_MODER |=  SWD_MODE_MASK
+#define SWDIO_MODE_FLOAT() \
+	gpio_mode_setup(SWDIO_PORT, GPIO_MODE_INPUT, \
+	                GPIO_PUPD_NONE, SWDIO_PIN);
+
+#define SWDIO_MODE_DRIVE() \
+	gpio_mode_setup(SWDIO_PORT, GPIO_MODE_OUTPUT, \
+	                GPIO_PUPD_NONE, SWDIO_PIN);
 
 
-#define USB_DRIVER      st_usbfs_v1_usb_driver
-#define USB_IRQ         NVIC_USB_LP_CAN1_RX0_IRQ
-#define USB_ISR         usb_lp_can1_rx0_isr
-#define USB_PU_PORT     GPIOA
-#define USB_PU_PIN      GPIO9
-
+#define USB_DRIVER      st_usbfs_v2_usb_driver
+#define USB_IRQ         NVIC_USB_IRQ
+#define USB_ISR         usb_isr
 /* Interrupt priorities.  Low numbers are high priority.
  * For now USART1 preempts USB which may spin while buffer is drained.
  * TIM3 is used for traceswo capture and must be highest priority.
  */
-#define IRQ_PRI_USB		(2 << 4)
-#define IRQ_PRI_USBUSART	(1 << 4)
-#define IRQ_PRI_USBUSART_TIM	(3 << 4)
-#define IRQ_PRI_TRACE		(0 << 4)
+#define IRQ_PRI_USB		(2 << 6)
+#define IRQ_PRI_USBUSART	(1 << 6)
+#define IRQ_PRI_USBUSART_TIM	(3 << 6)
+#define IRQ_PRI_TRACE		(0 << 6)
 
 #define USBUSART USART2
 #define USBUSART_CR1 USART2_CR1
-#define USBUSART_IRQ NVIC_USART2_EXTI26_IRQ
+#define USBUSART_IRQ NVIC_USART2_IRQ
 #define USBUSART_CLK RCC_USART2
 #define USBUSART_TX_PORT GPIOA
 #define USBUSART_TX_PIN  GPIO3
 #define USBUSART_RX_PORT GPIOA
 #define USBUSART_RX_PIN  GPIO2
-#define USBUSART_ISR usart2_exti26_isr
-#define USBUSART_TIM TIM4
-#define USBUSART_TIM_CLK_EN() rcc_periph_clock_enable(RCC_TIM4)
-#define USBUSART_TIM_IRQ NVIC_TIM4_IRQ
-#define USBUSART_TIM_ISR tim4_isr
+#define USBUSART_ISR usart2_isr
+#define USBUSART_TIM TIM14
+#define USBUSART_TIM_CLK_EN() rcc_periph_clock_enable(RCC_TIM14)
+#define USBUSART_TIM_IRQ NVIC_TIM14_IRQ
+#define USBUSART_TIM_ISR tim14_isr
 #define USART_SR(x) USART2_ISR
+
+#define STK_CSR_CLKSOURCE_AHB_DIV8 STK_CSR_CLKSOURCE_AHB
 
 /* TX/RX on the REV 0/1 boards are swapped against ftdijtag.*/
 #define UART_PIN_SETUP() do {											\
 		gpio_mode_setup(USBUSART_TX_PORT, GPIO_MODE_AF, GPIO_PUPD_PULLUP, \
 						USBUSART_TX_PIN | USBUSART_RX_PIN);				\
-		gpio_set_af(USBUSART_TX_PORT, GPIO_AF7,							\
+		gpio_set_af(USBUSART_TX_PORT, GPIO_AF1,							\
 					USBUSART_TX_PIN | USBUSART_RX_PIN);					\
 		USART2_CR2 |= USART_CR2_SWAP;									\
 	} while(0)
@@ -146,6 +145,14 @@ int usbuart_debug_write(const char *buf, size_t len);
 #else
 # define DEBUG(...)
 #endif
+
+
+#define gpio_set_val(port, pin, val) do {	\
+	if(val)					\
+		gpio_set((port), (pin));	\
+	else					\
+		gpio_clear((port), (pin));	\
+} while(0)
 
 #define SET_RUN_STATE(state)	{running_status = (state);}
 #define SET_IDLE_STATE(state)	{gpio_set_val(LED_PORT, LED_IDLE_RUN, state);}

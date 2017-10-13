@@ -419,8 +419,10 @@ static void dfu_detach_complete(usbd_device *dev, struct usb_setup_data *req)
 
 	platform_request_boot();
 
+#if defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__)
 	/* Reset core to enter bootloader */
 	scb_reset_core();
+#endif
 }
 
 static enum usbd_request_return_codes  cdcacm_control_request(usbd_device *dev,
@@ -557,13 +559,49 @@ void cdcacm_init(void)
 			    sizeof(usb_strings)/sizeof(char *),
 			    usbd_control_buffer, sizeof(usbd_control_buffer));
 
+	usbd_disconnect(usbdev, false);
 	usbd_register_set_config_callback(usbdev, cdcacm_set_config);
 
+	platform_delay(5);
 	nvic_set_priority(USB_IRQ, IRQ_PRI_USB);
 	nvic_enable_irq(USB_IRQ);
+	usbd_disconnect(usbdev, true);
 }
 
 void USB_ISR(void)
 {
 	usbd_poll(usbdev);
 }
+
+#if defined(USB_PU_PORT) && defined(USB_PU_PIN)
+void usbd_disconnect(usbd_device *usbd_dev,bool disconnected)
+{
+	/* platform_init is in charge to clock the port.*/
+	(void)usbd_dev;
+# if !defined(STM32F1)
+	gpio_mode_setup(USB_PU_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, USB_PU_PIN);
+# else
+	gpio_set_mode(USB_PU_PORT, GPIO_MODE_OUTPUT_2_MHZ,
+                GPIO_CNF_OUTPUT_PUSHPULL, USB_PU_PIN);
+# endif
+	if (disconnected)
+		gpio_set(USB_PU_PORT, USB_PU_PIN); /* Attach USB*/
+	else
+		gpio_clear(USB_PU_PORT, USB_PU_PIN); /* Detacj*/
+}
+#elif defined(USB_NO_DU)
+void usbd_disconnect(usbd_device *usbd_dev,bool disconnected)
+{
+	(void)usbd_dev;
+	if (disconnected) {
+# if !defined(STM32F1)
+        gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO12);
+        gpio_set_af(GPIOA, GPIO_AF14, GPIO12);
+# endif
+	} else {
+        gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ,
+					  GPIO_CNF_OUTPUT_PUSHPULL, GPIO12);
+        gpio_clear(GPIOA, GPIO12);
+	}
+}
+#endif

@@ -99,6 +99,7 @@ int usbuart_debug_write(const char *buf, size_t len);
 #define USB_DRIVER      st_usbfs_v1_usb_driver
 #define USB_IRQ	        NVIC_USB_LP_CAN_RX0_IRQ
 #define USB_ISR	        usb_lp_can_rx0_isr
+
 /* Interrupt priorities.  Low numbers are high priority.
  * For now USART2 preempts USB which may spin while buffer is drained.
  */

@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* This file implements the platform specific functions for the STM32F3_IF
+/* This file implements the platform specific functions for the STM32F072_IF
  * implementation.
  */
 
@@ -26,7 +26,7 @@
 #include "usbuart.h"
 #include "morse.h"
 
-#include <libopencm3/stm32/f3/rcc.h>
+#include <libopencm3/stm32/rcc.h>
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/usart.h>
@@ -36,28 +36,14 @@
 
 extern uint32_t _ebss;
 
-inline void set_clock(void)
-{
-	uint32_t cfgr;
-	rcc_osc_on(RCC_HSE);
-	rcc_wait_for_osc_ready(RCC_HSE);
-	cfgr = (((72 / 8) - 2) << RCC_CFGR_PLLMUL_SHIFT) |
-		RCC_CFGR_PLLSRC |
-		(RCC_CFGR_PPRE1_DIV_2 << RCC_CFGR_PPRE1_SHIFT);
-	RCC_CFGR = cfgr;
-	rcc_osc_on(RCC_PLL);
-	rcc_wait_for_osc_ready(RCC_PLL);
-	flash_set_ws(2);
-	cfgr |= RCC_CFGR_SWS_PLL;
-	RCC_CFGR = cfgr;
-	rcc_wait_for_sysclk_status(RCC_PLL);
-}
+#define SYSCFG_MEMRM                  MMIO32(0x40010000)
+#define SYSMEM_RESET_VECTOR            0x1fffC804
 
 void platform_init(void)
 {
 	volatile uint32_t *magic = (uint32_t *) &_ebss;
 	/* If RCC_CFGR is not at it's reset value, the bootloader was executed
-	 * and SET_ADDRESS got us to this place. On F3, without further efforts,
+	 * and SET_ADDRESS got us to this place. On F3 ???, without further efforts,
 	 * DFU does not start in that case.
 	 * So issue an reset to allow a clean start!
 	 */
@@ -71,32 +57,26 @@ void platform_init(void)
 		/* Jump to the built in bootloader by mapping System flash.
 		   As we just come out of reset, no other deinit is needed!*/
 		SYSCFG_MEMRM |=  1;
-		scb_reset_core();
+		void (*bootloader)(void) = (void (*)(void)) (*((uint32_t *) SYSMEM_RESET_VECTOR));
+		/* We come out of reset, so MSP is already set*/
+		bootloader();
+		while (1);
 	}
-
-	rcc_clock_setup_pll(&rcc_hse8mhz_configs[RCC_CLOCK_HSE8_72MHZ]);
-
-	set_clock();
+	rcc_clock_setup_in_hse_8mhz_out_48mhz();
+	rcc_set_usbclk_source(RCC_PLL);
 	/* Enable peripherals */
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_CRC);
-	rcc_periph_clock_enable(RCC_USB);
 
-	/* Set up USB Pins and alternate function*/
-	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO11 | GPIO12);
-	gpio_set_af(GPIOA, GPIO_AF14, GPIO11 | GPIO12);
-
-//	GPIOA_OSPEEDR |= 0x800A; /* Set High speed on PA0,PA1, PA7*/
-	GPIOA_OSPEEDR |= 0x4005; /* Set medium speed on PA0,PA1, PA7*/
-	gpio_mode_setup(JTAG_PORT, GPIO_MODE_INPUT,
-					GPIO_PUPD_PULLUP, TMS_PIN);
+//	GPIOA_OSPEEDR |= 0xf00c; /* Set High speed on PA1, PA6,PA7*/
+	GPIOA_OSPEEDR |= 0x5004; /* Set medium speed on PA1, PA6,PA7*/
 	gpio_mode_setup(JTAG_PORT, GPIO_MODE_OUTPUT,
-					GPIO_PUPD_PULLUP, TDI_PIN);
-	gpio_mode_setup(JTAG_PORT, GPIO_MODE_OUTPUT,
-					GPIO_PUPD_NONE, TCK_PIN);
+					GPIO_PUPD_NONE,
+					TMS_PIN | TCK_PIN |TDI_PIN);
 	gpio_mode_setup(TDO_PORT, GPIO_MODE_INPUT,
-					GPIO_PUPD_PULLUP, TDO_PIN);
+					GPIO_PUPD_NONE,
+					TDO_PIN);
 	gpio_mode_setup(LED_PORT, GPIO_MODE_OUTPUT,
 					GPIO_PUPD_NONE,
 					LED_UART | LED_IDLE_RUN | LED_ERROR | LED_BOOTLOADER);
@@ -113,15 +93,10 @@ void platform_init(void)
 
 void platform_srst_set_val(bool assert)
 {
-	while (gpio_get(SRST_PORT, SRST_PIN) == assert)
-		gpio_set_val(SRST_PORT, SRST_PIN, !assert);
-	platform_delay(5);
+	gpio_set_val(SRST_PORT, SRST_PIN, !assert);
 }
 
-bool platform_srst_get_val(void)
-{
-	return (gpio_get(SRST_PORT, SRST_PIN)) ? false : true;
-}
+bool platform_srst_get_val(void) { return false; }
 
 const char *platform_target_voltage(void)
 {

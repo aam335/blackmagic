@@ -107,10 +107,6 @@ void platform_init(void)
 	rcc_periph_clock_enable(RCC_CRC);
 
 	/* Setup GPIO ports */
-	gpio_clear(USB_PU_PORT, USB_PU_PIN);
-	gpio_set_mode(USB_PU_PORT, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT,
-			USB_PU_PIN);
-
 	gpio_set_mode(JTAG_PORT, GPIO_MODE_OUTPUT_50_MHZ,
 			GPIO_CNF_OUTPUT_PUSHPULL,
 			TMS_DIR_PIN | TMS_PIN | TCK_PIN | TDI_PIN);

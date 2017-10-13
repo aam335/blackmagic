@@ -78,8 +78,6 @@ void platform_init(void)
 	SCB_VTOR = (uint32_t)&vector_table;
 
 	platform_timing_init();
-	if (rev > 1) /* Reconnect USB */
-		gpio_set(GPIOA, GPIO15);
 	cdcacm_init();
 	/* Don't enable UART if we're being debugged. */
 	if (!(SCS_DEMCR & SCS_DEMCR_TRCENA))

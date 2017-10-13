@@ -20,11 +20,11 @@
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
+uint8_t rev;
 
 /* return 0 for stlink V1, 1 for stlink V2 and 2 for stlink V2.1 */
 uint32_t detect_rev(void)
 {
-	uint32_t rev;
 	int res;
 
 	while (RCC_CFGR & 0xf) /* Switch back to HSI. */
@@ -70,10 +70,9 @@ uint32_t detect_rev(void)
 			gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_2_MHZ,
 						  GPIO_CNF_OUTPUT_OPENDRAIN, GPIO15);
 			gpio_clear(GPIOB, GPIO15);
-			/* Pull USB_RENUM low!*/
+			/* Switch USB_RENUMn to open drain*/
 			gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ,
 						  GPIO_CNF_OUTPUT_OPENDRAIN, GPIO15);
-			gpio_clear(GPIOA, GPIO15);
 		} else
 			/* Catch F4 Disco board with both resistors fitted.*/
 			rev = 1;
@@ -82,11 +81,6 @@ uint32_t detect_rev(void)
 		RCC_CFGR |= (RCC_CFGR_MCO_HSE << 24);
 		gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
 		GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO8);
-	}
-	if (rev < 2) {
-		gpio_clear(GPIOA, GPIO12);
-		gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ,
-					  GPIO_CNF_OUTPUT_OPENDRAIN, GPIO12);
 	}
 	return rev;
 }
@@ -109,4 +103,25 @@ void platform_request_boot(void)
 	GPIOA_CRL = crl;
 	SCB_VTOR = 0;
 #endif
+}
+
+/* We can not use the functions in common/cdcacm.c, as we must consider
+ * the nucleo revision.*/
+#include "cdcacm.h"
+void usbd_disconnect(usbd_device *usbd_dev,bool disconnected)
+{
+	(void)usbd_dev;
+	if (rev < 2) {
+		if (!disconnected) {
+			gpio_clear(GPIOA, GPIO12);
+			gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ,
+						  GPIO_CNF_OUTPUT_PUSHPULL, GPIO12);
+		}
+	} else {
+		if (disconnected) {
+			gpio_set(GPIOA, GPIO15);
+		} else {
+			gpio_clear(GPIOA, GPIO15);
+		}
+	}
 }
