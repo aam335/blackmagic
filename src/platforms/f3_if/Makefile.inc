@@ -7,7 +7,7 @@ CFLAGS += -Istm32/include -mcpu=cortex-m4 -mthumb \
 	-DSTM32F3 -DF3_IF -I../libopencm3/include \
 	-Iplatforms/stm32
 
-LDFLAGS = -lopencm3_stm32f3 -Wl,--defsym,_stack=0x20008000 \
+LDFLAGS =  --specs=nano.specs -lopencm3_stm32f3 \
 	-Wl,-T,stm32/f3/stm32f303xc.ld -nostartfiles -lc -lnosys \
 	-Wl,-Map=mapfile -mthumb -mcpu=cortex-m4 -Wl,-gc-sections \
 	-mfloat-abi=hard -mfpu=fpv4-sp-d16 \
