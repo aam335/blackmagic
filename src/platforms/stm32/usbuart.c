@@ -219,9 +219,17 @@ void USBUSART_ISR(void)
 #if !defined(USART_SR_NE) && defined(USART_ISR_NF)
 # define USART_SR_NE USART_ISR_NF
 #endif
+#if defined(USART_ICR_ORECF)
+	/* Explixit ORE flag clear needed.*/
+	if (err & (USART_FLAG_FE | USART_SR_NE))
+		return;
+	if (err & USART_FLAG_ORE)
+		USART2_ICR = USART_ICR_ORECF;
+#else
+	/* ORE flag already cleaned up by read SR, read DR sequence above.*/
 	if (err & (USART_FLAG_ORE | USART_FLAG_FE | USART_SR_NE))
 		return;
-
+#endif
 	/* Turn on LED */
 	gpio_set(LED_PORT_UART, LED_UART);
 
