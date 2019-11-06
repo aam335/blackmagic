@@ -351,11 +351,6 @@ static bool cmd_target_power(target *t, int argc, const char **argv)
 #ifdef PLATFORM_HAS_TRACESWO
 static bool cmd_traceswo(target *t, int argc, const char **argv)
 {
-#if defined(STM32L0) || defined(STM32F3) || defined(STM32F4)
-	extern char serial_no[13];
-#else
-	extern char serial_no[9];
-#endif
 	uint32_t baudrate = 0;
 	(void)t;
 
@@ -363,7 +358,14 @@ static bool cmd_traceswo(target *t, int argc, const char **argv)
 		baudrate = atoi(argv[1]);
 
 	traceswo_init(baudrate);
+#if !defined(NO_LIBOPENCM3)
+# if defined(STM32L0) || defined(STM32F3) || defined(STM32F4)
+	extern char serial_no[13];
+# else
+	extern char serial_no[9];
+# endif
 	gdb_outf("%s:%02X:%02X\n", serial_no, 5, 0x85);
+#endif
 	return true;
 }
 #endif
