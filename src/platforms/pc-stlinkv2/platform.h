@@ -34,11 +34,13 @@
 #endif
 
 #define PLATFORM_HAS_DEBUG
+#define PLATFORM_HAS_TRACESWO
 
 #define PLATFORM_IDENT "StlinkV2/3"
 #define SET_RUN_STATE(state)
-void stlink_check_detach(int state);
-#define SET_IDLE_STATE(state) stlink_check_detach(state)
+#define SET_IDLE_STATE(state)
+void stlink_check_detach(void);
+#define LOOP_TASK()  stlink_check_detach()
 //#define SET_ERROR_STATE(state)
 
 void platform_buffer_flush(void);

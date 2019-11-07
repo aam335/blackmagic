@@ -31,6 +31,7 @@
 #include "exception.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <ctype.h>
@@ -65,7 +66,7 @@
 #define STLINK_DEBUG_ERR_FAULT         0x81
 #define STLINK_JTAG_UNKNOWN_JTAG_CHAIN 0x04
 #define STLINK_NO_DEVICE_CONNECTED     0x05
-#define STLINK_JTAG_COMMAND_ERROR      0x08
+#define STLINK_OUT_OF_MEMORY           0x06
 #define STLINK_JTAG_COMMAND_ERROR      0x08
 #define STLINK_JTAG_GET_IDCODE_ERROR   0x09
 #define STLINK_JTAG_DBG_POWER_ERROR    0x0b
@@ -182,9 +183,8 @@
 #define STLINK_DEBUG_APIV2_DRIVE_NRST_HIGH  0x01
 #define STLINK_DEBUG_APIV2_DRIVE_NRST_PULSE 0x02
 
-
 #define STLINK_TRACE_SIZE               4096
-#define STLINK_TRACE_MAX_HZ             2000000
+#define STLINK_TRACE_MAX_HZ          2250000
 
 #define STLINK_V3_MAX_FREQ_NB               10
 
@@ -211,6 +211,8 @@ typedef struct {
 	char         serial[32];
 	uint8_t      dap_select;
 	uint8_t      ep_tx;
+	uint8_t      ep_trace;
+	uint16_t     ep_size;
 	uint8_t      ver_hw;     /* 20, 21 or 31 deciphered from USB PID.*/
 	uint8_t      ver_stlink; /* 2 or 3  from API.*/
 	uint8_t      ver_api;
@@ -219,13 +221,14 @@ typedef struct {
 	uint8_t      ver_swim;
 	uint8_t      ver_bridge;
 	uint16_t     block_size;
+	bool         tracing;
 	libusb_device_handle *handle;
 	struct libusb_transfer* req_trans;
 	struct libusb_transfer* rep_trans;
+	struct libusb_transfer* trace_trans;
 } stlink;
 
 stlink Stlink;
-
 static void exit_function(void)
 {
 	libusb_exit(NULL);
@@ -271,20 +274,6 @@ static int LIBUSB_CALL hotplug_callback_detach(
 	(void)user_data;
 	device_detached = 1;
 	return 1;  /* deregister Callback*/
-}
-
-void stlink_check_detach(int state)
-{
-	if (state == 1) {
-		/* Check for hotplug events */
-		struct timeval tv = {0,0};
-		libusb_handle_events_timeout_completed(
-			Stlink.libusb_ctx, &tv, &device_detached);
-		if (device_detached) {
-			DEBUG("Dongle was detached\n");
-			exit(0);
-		}
-	}
 }
 
 static void LIBUSB_CALL on_trans_done(struct libusb_transfer * trans)
@@ -360,7 +349,7 @@ static int send_recv(uint8_t *txbuf, size_t txsize,
 					 uint8_t *rxbuf, size_t rxsize)
 {
 	int res = 0;
-	stlink_check_detach(1);
+//	stlink_check_detach(1);
 	if( txsize) {
 		int txlen = txsize;
 		libusb_fill_bulk_transfer(Stlink.req_trans, Stlink.handle,
@@ -429,6 +418,10 @@ static int stlink_usb_error_check(uint8_t *data, bool verbose)
 		case STLINK_NO_DEVICE_CONNECTED:
 			if (verbose)
 				DEBUG("No device connected\n");
+			return STLINK_ERROR_FAIL;
+		case STLINK_OUT_OF_MEMORY:
+			if (verbose)
+				DEBUG("Out of memory\n");
 			return STLINK_ERROR_FAIL;
 		case STLINK_JTAG_COMMAND_ERROR:
 			if (verbose)
@@ -794,26 +787,28 @@ void stlink_init(int argc, char **argv)
 				}
 				if (serial && (!strncmp(Stlink.serial, serial, strlen(serial))))
 					DEBUG("Found ");
+				Stlink.ep_tx = 1;
+				Stlink.ep_trace = 2;
+				Stlink.ep_size = 0x100;
 				if (desc.idProduct == PRODUCT_ID_STLINKV2) {
 					DEBUG("STLINKV20 serial %s\n", Stlink.serial);
 					Stlink.ver_hw = 20;
 					Stlink.ep_tx = 2;
+					Stlink.ep_trace = 3;
 				} else if (desc.idProduct == PRODUCT_ID_STLINKV21) {
 					DEBUG("STLINKV21 serial %s\n", Stlink.serial);
 					Stlink.ver_hw = 21;
-					Stlink.ep_tx = 1;
 				} else if (desc.idProduct == PRODUCT_ID_STLINKV21_MSD) {
 					DEBUG("STLINKV21_MSD serial %s\n", Stlink.serial);
 					Stlink.ver_hw = 21;
-					Stlink.ep_tx = 1;
 				} else if (desc.idProduct == PRODUCT_ID_STLINKV3E) {
 					DEBUG("STLINKV3E serial %s\n", Stlink.serial);
 					Stlink.ver_hw = 30;
-					Stlink.ep_tx = 1;
+					Stlink.ep_size = 0x1000;
 				} else if (desc.idProduct == PRODUCT_ID_STLINKV3) {
 					DEBUG("STLINKV3  serial %s\n", Stlink.serial);
 					Stlink.ver_hw = 30;
-					Stlink.ep_tx = 1;
+					Stlink.ep_size = 0x1000;
 				} else {
 					DEBUG("Unknown STLINK variant, serial %s\n", Stlink.serial);
 				}
@@ -900,6 +895,7 @@ void stlink_init(int argc, char **argv)
 	}
 	Stlink.req_trans = libusb_alloc_transfer(0);
 	Stlink.rep_trans = libusb_alloc_transfer(0);
+	Stlink.trace_trans = libusb_alloc_transfer(0);
 	stlink_version();
 	if ((Stlink.ver_stlink < 3 && Stlink.ver_jtag < 32) ||
 		(Stlink.ver_stlink == 3 && Stlink.ver_jtag < 3)) {
@@ -1394,4 +1390,92 @@ uint32_t adiv5_ap_read(ADIv5_AP_t *ap, uint16_t addr)
 	uint32_t ret;
 	stlink_read_dp_register(ap->apsel, addr, &ret);
 	return ret;
+}
+
+void traceswo_init(uint32_t baudrate)
+{
+	if ((!baudrate) || (baudrate > STLINK_TRACE_MAX_HZ))
+		baudrate = STLINK_TRACE_MAX_HZ;
+	uint8_t cmd[16] = {STLINK_DEBUG_COMMAND, STLINK_DEBUG_APIV2_STOP_TRACE_RX};
+	uint8_t data[2];
+	send_recv(cmd, 16, data, 2);
+	cmd[1] = STLINK_DEBUG_APIV2_START_TRACE_RX;
+	cmd[2] = (STLINK_TRACE_SIZE >>  0) & 0xff;
+	cmd[3] = (STLINK_TRACE_SIZE >>  8) & 0xff;
+	cmd[4] = (baudrate          >>  0) & 0xff;
+	cmd[5] = (baudrate          >>  8) & 0xff;
+	cmd[6] = (baudrate          >> 16) & 0xff;
+	cmd[7] = (baudrate          >> 24) & 0xff;
+	send_recv(cmd, 16, data, 2);
+	if (stlink_usb_error_check(data, true))
+		DEBUG("traceswo_enable: error\n");
+	else
+		Stlink.tracing = true;
+}
+
+static uint8_t buf[STLINK_TRACE_SIZE / 2];
+int cnt = 0;
+/* Continous tasks */
+void stlink_check_detach(void)
+{
+#if 0
+	static time_t last_time = 0;
+	static int loop_cnt = 0;
+	if (last_time == 0)
+		time(NULL);
+	time_t new_time = time(NULL);
+	if (new_time > last_time) {
+		DEBUG("%d calls in %ld sec\n", loop_cnt, new_time - last_time);
+		loop_cnt = 0;
+		last_time = new_time;
+	} else {
+		loop_cnt ++;
+	}
+#endif
+	/* Check for hotplug events */
+	struct timeval tv = {0,0};
+	libusb_handle_events_timeout_completed(
+			Stlink.libusb_ctx, &tv, &device_detached);
+	if (device_detached) {
+		DEBUG("Dongle was detached\n");
+		exit(0);
+	}
+	/* check for data in the trace buffer */
+	if (Stlink.tracing) {
+		uint8_t cmd[16] = {STLINK_DEBUG_COMMAND, STLINK_DEBUG_APIV2_GET_TRACE_NB};
+		uint8_t data[12];
+		int size = send_recv(cmd, 16, data, 2);
+		if (size < 0) {
+			printf("STLINK_DEBUG_APIV2_GET_TRACE_NB failed\n");
+		}
+		size_t available = data[0] | data[1] << 8;
+		if (available) {
+			if (available >= STLINK_TRACE_SIZE/2)
+				DEBUG("Trace overflow\n");
+			libusb_fill_bulk_transfer(Stlink.trace_trans, Stlink.handle,
+									  Stlink.ep_trace | LIBUSB_ENDPOINT_IN,
+									  buf, available, NULL, NULL, 0);
+			
+			if (submit_wait(Stlink.trace_trans)) {
+				DEBUG("clear 1\n");
+				libusb_clear_halt(Stlink.handle,1);
+				return;
+			}
+			int res = Stlink.trace_trans->actual_length;
+			if (res > 0) {
+				if (res < 5)
+					return;
+				int i;
+				uint8_t *p = buf;
+				DEBUG(" Rec (%" PRI_SIZET "/%d): ", available, res);
+				for (i = 0; i < res && i < res ; i++) {
+					if (isalnum(p[i]))
+						DEBUG("%c",p[i]);
+				}
+				DEBUG("\n");
+			} else {
+				DEBUG("ERROR: res %d\n", res);
+			}
+		}
+	}
 }
