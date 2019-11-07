@@ -93,6 +93,10 @@ int gdb_if_init(void)
 	return 0;
 }
 
+#if !defined(LOOP_TASK)
+# define LOOP_TASK()
+#else
+#endif
 
 unsigned char gdb_if_getchar(void)
 {
@@ -117,7 +121,7 @@ unsigned char gdb_if_getchar(void)
 				if (gdb_if_conn == -1) {
 					if (errno == EWOULDBLOCK) {
 						SET_IDLE_STATE(1);
-						platform_delay(100);
+						LOOP_TASK();
 					} else {
 						DEBUG("error when accepting connection: %s", strerror(errno));
 						exit(1);
@@ -141,12 +145,30 @@ unsigned char gdb_if_getchar(void)
 			fcntl(gdb_if_conn, F_SETFL, flags & ~O_NONBLOCK);
 #endif
 		}
-		i = recv(gdb_if_conn, (void*)&ret, 1, 0);
-		if(i <= 0) {
-			gdb_if_conn = -1;
-			DEBUG("Dropped broken connection: %s\n", strerror(errno));
-			/* Return '+' in case we were waiting for an ACK */
-			return '+';
+# if defined(__CYGWIN__)
+		TIMEVAL tv;
+#else
+		struct timeval tv;
+#endif
+
+		fd_set fds;
+		while (1) {
+			tv.tv_sec = 0;
+			tv.tv_usec = 1000;
+			LOOP_TASK();
+			FD_ZERO(&fds);
+			FD_SET(gdb_if_conn, &fds);
+			if(select(gdb_if_conn + 1, &fds, NULL, NULL, &tv) > 0) {
+				i = recv(gdb_if_conn, (void*)&ret, 1, 0);
+				if (i <= 0) {
+					gdb_if_conn = -1;
+					DEBUG("Dropped broken connection: %s\n", strerror(errno));
+					/* Return '+' in case we were waiting for an ACK */
+					return '+';
+				} else {
+					break;
+				}
+			}
 		}
 	}
 	return ret;
@@ -162,16 +184,20 @@ unsigned char gdb_if_getchar_to(int timeout)
 #endif
 
 	if(gdb_if_conn == -1) return -1;
-
-	tv.tv_sec = timeout / 1000;
-	tv.tv_usec = (timeout % 1000) * 1000;
-
-	FD_ZERO(&fds);
-	FD_SET(gdb_if_conn, &fds);
-
-	if(select(gdb_if_conn+1, &fds, NULL, NULL, &tv) > 0)
-		return gdb_if_getchar();
-
+	while (1) {
+		tv.tv_sec = 0;
+		tv.tv_usec = 1000;
+		FD_ZERO(&fds);
+		FD_SET(gdb_if_conn, &fds);
+		if(select(gdb_if_conn + 1, &fds, NULL, NULL, &tv) > 0)
+			return gdb_if_getchar();
+		LOOP_TASK();
+		if (timeout) {
+			timeout --;
+			if (timeout <= 0)
+				break;
+		}
+	}
 	return -1;
 }
 
