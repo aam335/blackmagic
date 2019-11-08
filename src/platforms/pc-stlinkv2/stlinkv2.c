@@ -1392,10 +1392,15 @@ uint32_t adiv5_ap_read(ADIv5_AP_t *ap, uint16_t addr)
 	return ret;
 }
 
+int trace_if_init(void);
+static int no_trace_connection = -1; /* 0 with attached listener*/
 void traceswo_init(uint32_t baudrate)
 {
 	if ((!baudrate) || (baudrate > STLINK_TRACE_MAX_HZ))
 		baudrate = STLINK_TRACE_MAX_HZ;
+	if (no_trace_connection && trace_if_init()) {
+		fprintf(stderr, "Failed to open a Trace socket\n");
+	}
 	uint8_t cmd[16] = {STLINK_DEBUG_COMMAND, STLINK_DEBUG_APIV2_STOP_TRACE_RX};
 	uint8_t data[2];
 	send_recv(cmd, 16, data, 2);
@@ -1414,11 +1419,12 @@ void traceswo_init(uint32_t baudrate)
 }
 
 static uint8_t buf[STLINK_TRACE_SIZE / 2];
-int cnt = 0;
 /* Continous tasks */
 void stlink_check_detach(void)
 {
 #if 0
+	/* Check frequency how often we are called.*/
+	static int cnt = 0;
 	static time_t last_time = 0;
 	static int loop_cnt = 0;
 	if (last_time == 0)
@@ -1442,11 +1448,16 @@ void stlink_check_detach(void)
 	}
 	/* check for data in the trace buffer */
 	if (Stlink.tracing) {
-		uint8_t cmd[16] = {STLINK_DEBUG_COMMAND, STLINK_DEBUG_APIV2_GET_TRACE_NB};
+		uint8_t cmd[16] = {STLINK_DEBUG_COMMAND,
+						   STLINK_DEBUG_APIV2_GET_TRACE_NB};
 		uint8_t data[12];
 		int size = send_recv(cmd, 16, data, 2);
 		if (size < 0) {
 			printf("STLINK_DEBUG_APIV2_GET_TRACE_NB failed\n");
+		}
+		if (no_trace_connection) {
+			int trace_if_accept(void);
+			no_trace_connection = trace_if_accept();
 		}
 		size_t available = data[0] | data[1] << 8;
 		if (available) {
@@ -1463,6 +1474,8 @@ void stlink_check_detach(void)
 			}
 			int res = Stlink.trace_trans->actual_length;
 			if (res > 0) {
+#if 0
+				/* Rough printing to console*/
 				if (res < 5)
 					return;
 				int i;
@@ -1473,6 +1486,11 @@ void stlink_check_detach(void)
 						DEBUG("%c",p[i]);
 				}
 				DEBUG("\n");
+#endif
+				if (!no_trace_connection) {
+					int trace_if_putbuf(unsigned char *buf, int size);
+					no_trace_connection = trace_if_putbuf(buf, res);
+				}
 			} else {
 				DEBUG("ERROR: res %d\n", res);
 			}

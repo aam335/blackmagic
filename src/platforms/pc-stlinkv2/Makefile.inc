@@ -9,5 +9,5 @@ else ifneq (, $(findstring cygwin, $(SYS)))
 LDFLAGS += -lws2_32
 endif
 VPATH += platforms/pc
-SRC += 	timing.c stlinkv2.c
+SRC += 	timing.c stlinkv2.c trace_if.c
 OWN_HL = 1
