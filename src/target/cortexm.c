@@ -266,6 +266,9 @@ static void cortexm_priv_free(void *priv)
 static bool cortexm_forced_halt(target *t)
 {
 	target_halt_request(t);
+	/* Request halt on reset */
+	target_mem_write32(t, CORTEXM_DEMCR, priv->demcr);
+
 	platform_srst_set_val(false);
 	uint32_t dhcsr = 0;
 	uint32_t start_time = platform_time_ms();
@@ -412,12 +415,8 @@ bool cortexm_attach(target *t)
 	/* Clear any pending fault condition */
 	target_check_error(t);
 
-	target_halt_request(t);
 	if (!cortexm_forced_halt(t))
 		return false;
-
-	/* Request halt on reset */
-	target_mem_write32(t, CORTEXM_DEMCR, priv->demcr);
 
 	/* Reset DFSR flags */
 	target_mem_write32(t, CORTEXM_DFSR, CORTEXM_DFSR_RESETALL);
