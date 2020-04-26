@@ -34,7 +34,7 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/stm32/flash.h>
 
-extern uint32_t _ebss;
+extern uint32_t _ebss[];
 
 inline void set_clock(void)
 {
