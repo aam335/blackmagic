@@ -35,8 +35,10 @@ char *serial_no_read(char *s, int max)
 	uint16_t *uid = (uint16_t *)DESIG_UNIQUE_ID_BASE;
 # if defined(STM32F4)
 	int offset = 3;
-# elif defined(STM32L0) || defined(STM32F3)
+# elif defined(STM32L0) || defined(STM32F0) || defined(STM32F3)
 	int offset = 5;
+#else
+#warning Undefined family
 # endif
 	snprintf(s, max, "%04X%04X%04X",
             uid[1] + uid[5], uid[0] + uid[4], uid[offset]);
