@@ -135,10 +135,9 @@ unsigned char gdb_if_getchar(void)
 		}
 	}
 #else
-	int flags;
 	while(i <= 0) {
 		if(gdb_if_conn <= 0) {
-			flags = fcntl(gdb_if_serv, F_GETFL);
+			int flags = fcntl(gdb_if_serv, F_GETFL);
 			fcntl(gdb_if_serv, F_SETFL, flags | O_NONBLOCK);
 			while(1) {
 				gdb_if_conn = accept(gdb_if_serv, NULL, NULL);
@@ -152,47 +151,58 @@ unsigned char gdb_if_getchar(void)
 						exit(1);
 					}
 				} else {
-					fcntl(gdb_if_serv, F_SETFL, flags);
 					break;
 				}
 			}
 			DEBUG_INFO("Got connection\n");
-			flags = fcntl(gdb_if_conn, F_GETFL);
-			fcntl(gdb_if_conn, F_SETFL, flags & ~O_NONBLOCK);
+			/* Keep the connection non-blocking */
 		}
-		i = recv(gdb_if_conn, (void*)&ret, 1, 0);
-		if(i <= 0) {
-			gdb_if_conn = -1;
-			DEBUG_INFO("Dropped broken connection: %s\n", strerror(errno));
-			/* Return '+' in case we were waiting for an ACK */
-			return '+';
+		while (1) {
+			errno = 0; /* recv returns 0 on a broken connection!*/
+			i = recv(gdb_if_conn, (void*)&ret, 1, 0);
+			if (i <= 0) {
+				if (errno == EWOULDBLOCK) {
+					platform_delay(1);
+					continue;
+				}
+				gdb_if_conn = -1;
+				DEBUG_INFO("Dropped broken connection: %s\n", strerror(errno));
+				/* Return '+' in case we were waiting for an ACK */
+				return '+';
+			}
+			break;
 		}
-	}
 #endif
+	}
 	return ret;
 }
 
 unsigned char gdb_if_getchar_to(int timeout)
 {
-	fd_set fds;
-# if defined(__CYGWIN__)
-        TIMEVAL tv;
-#else
-	struct timeval tv;
-#endif
+	unsigned char ret = -1;
+	if(gdb_if_conn == -1) return ret;
 
-	if(gdb_if_conn == -1) return -1;
-
-	tv.tv_sec = timeout / 1000;
-	tv.tv_usec = (timeout % 1000) * 1000;
-
-	FD_ZERO(&fds);
-	FD_SET(gdb_if_conn, &fds);
-
-	if(select(gdb_if_conn+1, &fds, NULL, NULL, &tv) > 0)
-		return gdb_if_getchar();
-
-	return -1;
+	while (1) {
+		errno = 0; /* recv returns 0 on a broken connection!*/
+		int i = recv(gdb_if_conn, (void*)&ret, 1, 0);
+		if (i <= 0) {
+			if (timeout <= 0)
+				break;
+			if (errno == EWOULDBLOCK) {
+				platform_delay(1);
+				timeout--;
+				continue;
+			}
+			gdb_if_conn = -1;
+			DEBUG_INFO("Dropped broken connection: %s\n", strerror(errno));
+			/* Return '+' in case we were waiting for an ACK */
+			ret = '+';
+			break;
+		} else {
+			break;
+		}
+	}
+	return ret;
 }
 
 void gdb_if_putchar(unsigned char c, int flush)
