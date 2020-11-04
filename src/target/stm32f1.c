@@ -120,6 +120,10 @@ bool stm32f1_probe(target *t)
 {
 	if (t->t_designer == AP_DESIGNER_ARM)
 		t->idcode = target_mem_read32(t, DBGMCU_IDCODE) & 0xfff;
+
+	if (t->t_designer == AP_DESIGNER_STM&&t->idcode==0x440 ) // F0
+		t->idcode = target_mem_read32(t, DBGMCU_IDCODE_F0) & 0xfff;
+
 	size_t flash_size;
 	size_t block_size = 0x400;
 	switch(t->idcode) {
