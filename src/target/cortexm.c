@@ -297,39 +297,37 @@ bool cortexm_probe(ADIv5_AP_t *ap)
 	 * that is, the actual values are found in the Technical Reference Manual
 	 * for each Cortex-M core.
 	 */
-	uint32_t cpuid = target_mem_read32(t, CORTEXM_CPUID);
-	uint16_t partno = (cpuid >> 4) & 0xfff;
-
-	switch (partno) {
-	case 0xd21:
+	t->cpuid = target_mem_read32(t, CORTEXM_CPUID);
+	switch (t->cpuid & CPUID_CORE_MASK) {
+	case CORTEX_M33:
 		t->core = "M33";
 		break;
 
-	case 0xd20:
+	case CORTEX_M23:
 		t->core = "M23";
 		break;
 
-	case 0xc23:
+	case CORTEX_M3:
 		t->core = "M3";
 		break;
 
-	case 0xc24:
+	case CORTEX_M4:
 		t->core = "M4";
 		break;
 
-	case 0xc27:
+	case CORTEX_M7:
 		t->core = "M7";
-		if ((((cpuid >> 20) & 0xf) == 0) && (((cpuid >> 0) & 0xf) < 2)) {
+		if ((((t->cpuid >> 20) & 0xf) == 0) && (((t->cpuid >> 0) & 0xf) < 2)) {
 			DEBUG_WARN("Silicon bug: Single stepping will enter pending "
 					   "exception handler with this M7 core revision!\n");
 		}
 		break;
 
-	case 0xc60:
+	case CORTEX_M0P:
 		t->core = "M0+";
 		break;
 
-	case 0xc20:
+	case CORTEX_M0:
 		t->core = "M0";
 		break;
 	}
@@ -835,6 +833,8 @@ static void cortexm_halt_resume(target *t, bool step)
 		target_mem_write32(t, CORTEXM_ICIALLU, 0);
 
 	target_mem_write32(t, CORTEXM_DHCSR, dhcsr);
+	/* Add some clock cycles to get the CPU running again.*/
+	target_mem_read32(t, 0);
 }
 
 static int cortexm_fault_unwind(target *t)
